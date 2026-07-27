@@ -21,6 +21,11 @@ dependencies {
     implementation 'org.apache.logging.log4j:log4j-core:2.15.0'
 }
 
+java {
+    withSourcesJar()
+    withJavadocJar()
+}
+
 jar {
     from rootProject.file('LICENSE')
 
