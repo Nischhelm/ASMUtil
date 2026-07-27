@@ -3,6 +3,10 @@ plugins {
     id 'eclipse'
 }
 
+version = '2.8.0'
+group = 'meldexun.asmutil'
+base.archivesName = 'ASMUtil'
+
 java.toolchain.languageVersion = JavaLanguageVersion.of(8)
 
 repositories {
@@ -17,19 +21,16 @@ dependencies {
 }
 
 jar {
-    archiveBaseName = projectName
-    archiveVersion = projectVersion
-
     from rootProject.file('LICENSE')
 
     manifest.attributes([
-        'Built-By': projectAuthor,
-        'Specification-Title': projectName,
-        'Specification-Version': projectVersion,
-        'Specification-Vendor': projectAuthor,
-        'Implementation-Title': projectName,
-        'Implementation-Version': projectVersion,
-        'Implementation-Vendor': projectAuthor,
-        'Implementation-Timestamp': new Date().format("yyyy-MM-dd HH:mm:ss")
+        'Built-By': 'Meldexun',
+        'Specification-Title': 'ASMUtil',
+        'Specification-Version': '2.8',
+        'Specification-Vendor': 'Meldexun',
+        'Implementation-Title': 'ASMUtil',
+        'Implementation-Version': version,
+        'Implementation-Vendor': 'Meldexun',
+        'Implementation-Timestamp': new Date().format('yyyy-MM-dd HH:mm:ss')
     ])
 }
