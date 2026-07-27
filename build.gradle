@@ -2,6 +2,7 @@ plugins {
     id 'java'
     id 'eclipse'
     id 'idea'
+    id 'com.vanniktech.maven.publish' version '0.37.0'
 }
 
 version = '2.8.0'
@@ -39,4 +40,37 @@ jar {
         'Implementation-Vendor': 'Meldexun',
         'Implementation-Timestamp': new Date().format('yyyy-MM-dd HH:mm:ss')
     ])
+}
+
+mavenPublishing {
+    coordinates('io.github.meldexun', 'asmutil', version)
+
+    pom {
+        name = 'ASMUtil'
+        description = 'ASM utility primarily designed for Minecraft modding.'
+        inceptionYear = '2021'
+        url = 'https://github.com/Meldexun/ASMUtil'
+        licenses {
+            license {
+                name = 'The MIT License'
+                url = 'https://opensource.org/license/mit'
+                distribution = 'https://opensource.org/license/mit'
+            }
+        }
+        developers {
+            developer {
+                id = 'meldexun'
+                name = 'Meldexun'
+                url = 'https://github.com/Meldexun'
+            }
+        }
+        scm {
+            url = 'https://github.com/Meldexun/ASMUtil'
+            connection = 'scm:git:git://github.com/Meldexun/ASMUtil.git'
+            developerConnection = 'scm:git:ssh://git@github.com/Meldexun/ASMUtil.git'
+        }
+    }
+
+    publishToMavenCentral()
+    signAllPublications()
 }
