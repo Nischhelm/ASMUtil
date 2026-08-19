@@ -23,7 +23,9 @@ dependencies {
 }
 
 jar {
-    from rootProject.file('LICENSE')
+    from('LICENSE') {
+        rename { 'META-INF/' + it }
+    }
 
     manifest.attributes([
         'Built-By': 'Meldexun',
