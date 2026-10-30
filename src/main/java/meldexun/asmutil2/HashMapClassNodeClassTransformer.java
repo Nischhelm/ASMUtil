@@ -10,9 +10,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Convenient base class for class transformers that use a HashMap to register
- * transformers for specific classes. Transformers are registered once during
- * construction and stored in a map for fast lookup.
+ * The usual base class for a transformer: register transformers per class name in
+ * {@link #registerTransformers(IClassTransformerRegistry)}, and they are looked up by exact class name when classes
+ * are loaded. Transformers for the same class are applied sorted by {@link ClassNodeTransformer#priority()}, and in
+ * registration order for equal priorities.
  */
 public abstract class HashMapClassNodeClassTransformer extends ClassNodeClassTransformer {
 
@@ -25,7 +26,11 @@ public abstract class HashMapClassNodeClassTransformer extends ClassNodeClassTra
 	}
 
 	/**
-	 * Registers all class and method transformers. Called once during construction.
+	 * Registers all transformers.
+	 * <p>
+	 * This is called from the constructor of this class, i.e. <b>before field initializers and the constructor body
+	 * of the subclass have run</b>. Instance fields of the subclass are still {@code null}/{@code 0} at this point;
+	 * use static fields or local variables for anything needed during registration.
 	 *
 	 * @param registry the registry to add transformers to
 	 */

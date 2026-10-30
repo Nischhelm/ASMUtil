@@ -12,24 +12,35 @@ import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.MethodNode;
 
 /**
- * Registry interface for adding class and method transformers.
- * Provides convenient methods for registering transformers with various configurations
- * including support for obfuscated method names and optional transformations.
+ * Collects the transformers of a {@link HashMapClassNodeClassTransformer}. Only
+ * {@link #add(String, ClassNodeTransformer)} has to be implemented; the other methods are shortcuts that create the
+ * transformer via {@link ClassNodeTransformer} or {@link MethodNodeTransformer} (see there for the meaning of
+ * {@code Obf}, {@code Optional} and {@code required}).
+ * <p>
+ * Class names are binary names with dots as passed to {@link IClassTransformer#transform(String, String, byte[])} as
+ * {@code name}, e.g. {@code com.example.Foo} or {@code com.example.Foo$Inner}. Names inside the transformer
+ * (owners, descriptors) are internal names with slashes, as everywhere in ASM.
+ *
+ * <pre>
+ * registry.add("com.example.Foo", "bar", "(I)V", ClassWriter.COMPUTE_FRAMES, methodNode -&gt; {
+ *     methodNode.instructions.insert(...);
+ * });
+ * </pre>
  */
 public interface IClassTransformerRegistry {
 
 	/**
-	 * Adds a class transformer for the specified class.
+	 * Adds a transformer for the specified class.
 	 *
-	 * @param className the fully qualified class name
+	 * @param className the binary class name, e.g. {@code com.example.Foo$Inner}
 	 * @param transformer the transformer to apply
 	 */
 	void add(String className, ClassNodeTransformer transformer);
 
 	/**
-	 * Adds a class transformer using a simple consumer.
+	 * Adds a class transformer that always reports the class as changed.
 	 *
-	 * @param className the fully qualified class name
+	 * @param className the binary class name
 	 * @param writeFlags ClassWriter flags for bytecode generation
 	 * @param transformer the transformation logic
 	 */
@@ -38,9 +49,9 @@ public interface IClassTransformerRegistry {
 	}
 
 	/**
-	 * Adds a class transformer using a predicate that returns whether transformation occurred.
+	 * Adds a class transformer that returns whether it changed the class.
 	 *
-	 * @param className the fully qualified class name
+	 * @param className the binary class name
 	 * @param writeFlags ClassWriter flags for bytecode generation
 	 * @param transformer the transformation logic
 	 */
@@ -49,9 +60,9 @@ public interface IClassTransformerRegistry {
 	}
 
 	/**
-	 * Adds a method transformer for a method with the specified name.
+	 * Adds a transformer for the single method with the given name.
 	 *
-	 * @param className the fully qualified class name
+	 * @param className the binary class name
 	 * @param name the method name
 	 * @param writeFlags ClassWriter flags for bytecode generation
 	 * @param transformer the transformation logic
@@ -61,11 +72,11 @@ public interface IClassTransformerRegistry {
 	}
 
 	/**
-	 * Adds a method transformer with support for obfuscated method names.
+	 * Adds a transformer for the single method named either {@code name} or {@code obfName}.
 	 *
-	 * @param className the fully qualified class name
+	 * @param className the binary class name
 	 * @param name the deobfuscated method name
-	 * @param obfName the obfuscated (SRG) method name
+	 * @param obfName the obfuscated method name
 	 * @param writeFlags ClassWriter flags for bytecode generation
 	 * @param transformer the transformation logic
 	 */
@@ -75,9 +86,9 @@ public interface IClassTransformerRegistry {
 	}
 
 	/**
-	 * Adds a method transformer matching both name and descriptor.
+	 * Adds a transformer for the method with the given name and descriptor.
 	 *
-	 * @param className the fully qualified class name
+	 * @param className the binary class name
 	 * @param name the method name
 	 * @param desc the method descriptor (e.g., "(Ljava/lang/String;)V")
 	 * @param writeFlags ClassWriter flags for bytecode generation

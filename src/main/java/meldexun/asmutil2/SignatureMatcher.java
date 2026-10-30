@@ -15,22 +15,41 @@ import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 
 /**
- * Matcher for method and field signatures with support for obfuscated names.
- * Combines predicate testing with error detail generation for better error messages.
+ * A {@link Predicate} that matches members by owner/name/descriptor and can describe what it was looking
+ * for (via {@link #accept(StringBuilder)}), which is used to build "not found" error messages.
+ * <p>
+ * Naming scheme of the factory methods: {@code matching<Target><Parts>[Obf]}, where
+ * <ul>
+ * <li>Target is {@code Field}/{@code Method} for {@link FieldNode}/{@link MethodNode} declarations or
+ * {@code FieldInsn}/{@code MethodInsn} for instructions referencing a member,</li>
+ * <li>Parts is which of owner, name and descriptor have to be equal,</li>
+ * <li>{@code Obf} variants take a second (obfuscated) value for some parts and accept a member if
+ * <b>either</b> value is equal. There is no detection of the current environment, so one matcher works both in
+ * a deobfuscated development environment and in production. The order of the two values only affects the
+ * error message.</li>
+ * </ul>
+ * Be aware that the parameter order of the {@code Obf} variants differs between overloads: the 4-part
+ * name/desc variant is {@code (name, obfName, desc, obfDesc)} while the 6-part owner variant is
+ * {@code (owner, obfOwner, name, obfName, desc, obfDesc)}.
+ * <p>
+ * {@link FieldNode}s and {@link MethodNode}s have no owner (their {@link Signature#owner()} is {@code null}), so
+ * the {@code Owner} variants for them never match. Use them only for instructions.
  *
- * @param <T> the type to match (MethodNode, FieldNode, MethodInsnNode, or FieldInsnNode)
+ * @param <T> the type to match ({@link MethodNode}, {@link FieldNode}, {@link MethodInsnNode} or
+ *        {@link FieldInsnNode})
  */
 public interface SignatureMatcher<T> extends Predicate<T>, Consumer<StringBuilder> {
 
 	/**
-	 * Represents a method or field signature with owner, name, and descriptor.
+	 * The owner, name and descriptor of a field or method (declaration or reference). Owners and descriptors use
+	 * internal names ({@code java/lang/String}, {@code (I)Ljava/lang/String;}).
 	 */
 	interface Signature {
 
 		/**
-		 * Returns the owner (class name) of this member.
+		 * Returns the internal name of the class declaring or referenced as owner of this member.
 		 *
-		 * @return the owner
+		 * @return the owner, or {@code null} for {@link FieldNode}s and {@link MethodNode}s
 		 */
 		String owner();
 
@@ -86,18 +105,12 @@ public interface SignatureMatcher<T> extends Predicate<T>, Consumer<StringBuilde
 	}
 
 	/**
-	 * Appends error details to the StringBuilder for debugging failed matches.
+	 * Appends a description of what this matcher matches (e.g. {@code name=foo desc=()V}) to an error message.
 	 *
 	 * @param sb the StringBuilder to append to
 	 */
 	void accept(StringBuilder sb);
 
-	/**
-	 * Creates a matcher for fields by name.
-	 *
-	 * @param name the field name
-	 * @return a field matcher
-	 */
 	static SignatureMatcher<FieldNode> matchingFieldName(String name) {
 		return matchingName(Signature::of, name);
 	}

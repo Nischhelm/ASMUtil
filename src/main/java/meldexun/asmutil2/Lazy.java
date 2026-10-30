@@ -9,7 +9,7 @@ import java.util.Objects;
 import java.util.function.Supplier;
 
 /**
- * Lazy-initialized value holder. The supplier is invoked only once on first access.
+ * Lazily computed value. The supplier is invoked on the first {@link #get()} and then released. Not thread-safe.
  *
  * @param <T> the type of the value
  */

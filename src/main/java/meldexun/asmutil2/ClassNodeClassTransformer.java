@@ -11,9 +11,14 @@ import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.tree.ClassNode;
 
 /**
- * Class transformer that uses ASM's tree API for class transformation.
- * Works with {@link ClassNode} objects which provide a complete in-memory representation
- * of a class that can be easily inspected and modified.
+ * Class transformer based on the ASM tree API. For every class, {@link #getClassNodeTransformers(String)} decides
+ * which {@link ClassNodeTransformer}s apply. If there are any, the class is read into a single {@link ClassNode},
+ * all transformers are applied in list order, and the class is written once if at least one of them reported a
+ * change, using the union of their write flags. Classes without transformers are not even parsed.
+ * <p>
+ * Most users want {@link HashMapClassNodeClassTransformer}; extend this class directly to select transformers by
+ * something other than the exact class name (e.g. return the same list for every class and decide inside the
+ * transformer).
  */
 public abstract class ClassNodeClassTransformer extends ClassVisitorClassTransformer<ClassNode> {
 
@@ -59,10 +64,10 @@ public abstract class ClassNodeClassTransformer extends ClassVisitorClassTransfo
 	}
 
 	/**
-	 * Provides the list of transformers to apply to a specific class.
+	 * Returns the transformers for a class. Called for every class that is loaded, so it should be cheap.
 	 *
-	 * @param className the class name to get transformers for
-	 * @return list of transformers, or null/empty if no transformations needed
+	 * @param className the transformed binary class name with dots
+	 * @return the transformers in the order they are applied, or {@code null}/an empty list to skip the class
 	 */
 	protected abstract List<ClassNodeTransformer> getClassNodeTransformers(String className);
 

@@ -9,8 +9,9 @@ import java.util.Iterator;
 import java.util.NoSuchElementException;
 
 /**
- * Base class for iterators that never return null elements.
- * Subclasses implement computeNext() to determine the next element.
+ * Base class for iterators whose end is signalled by {@link #computeNext(Object)} returning {@code null}, so they
+ * cannot contain null elements. {@code computeNext} receives the previously returned element ({@code null} on the
+ * first call), which makes linked structures easy to iterate.
  *
  * @param <E> the element type
  */

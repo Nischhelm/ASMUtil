@@ -11,30 +11,38 @@ import java.util.function.Predicate;
 import org.objectweb.asm.tree.ClassNode;
 
 /**
- * Functional interface for transforming a {@link ClassNode}.
- * Transformers can be prioritized and are sorted by priority when applied.
+ * A transformation of a {@link ClassNode}, together with the {@link org.objectweb.asm.ClassWriter} flags it needs
+ * and a priority. Usually created with {@link #create(int, Consumer)}, {@link MethodNodeTransformer} or the
+ * {@link IClassTransformerRegistry} methods rather than implemented directly.
+ * <p>
+ * When several transformers target the same class (see {@link ClassNodeClassTransformer}) they all work on the same
+ * ClassNode, and the class is written once with the union of the write flags of all transformers that reported a
+ * change.
  */
 public interface ClassNodeTransformer extends Comparable<ClassNodeTransformer> {
 
 	/**
-	 * Applies transformation to a ClassNode.
+	 * Transforms the class in place.
 	 *
 	 * @param classNode the class to transform
-	 * @return true if transformation was applied, false otherwise
+	 * @return {@code true} if the class was changed. If no transformer of a class returns {@code true}, the original
+	 *         bytes are kept and any modifications made to the ClassNode are discarded.
 	 */
 	boolean transform(ClassNode classNode);
 
 	/**
-	 * Returns ClassWriter flags needed for bytecode generation.
+	 * Returns the {@link org.objectweb.asm.ClassWriter} flags needed after this transformation, e.g.
+	 * {@code COMPUTE_FRAMES} when jumps were added or {@code COMPUTE_MAXS} when the stack got deeper. {@code 0}
+	 * means the transformer keeps {@code maxStack}, {@code maxLocals} and the stack map frames valid itself.
 	 *
-	 * @return flags such as COMPUTE_FRAMES or COMPUTE_MAXS
+	 * @return the write flags
 	 */
 	int writeFlags();
 
 	/**
-	 * Returns the priority of this transformer. Lower values execute first.
+	 * Returns the priority of this transformer. Lower values run first.
 	 *
-	 * @return the priority value
+	 * @return the priority
 	 */
 	int priority();
 
@@ -44,7 +52,7 @@ public interface ClassNodeTransformer extends Comparable<ClassNodeTransformer> {
 	}
 
 	/**
-	 * Creates a ClassNodeTransformer from a simple consumer.
+	 * Creates a transformer with priority 0 that always reports the class as changed.
 	 *
 	 * @param writeFlags ClassWriter flags for bytecode generation
 	 * @param transformer the transformation logic
@@ -61,10 +69,10 @@ public interface ClassNodeTransformer extends Comparable<ClassNodeTransformer> {
 	}
 
 	/**
-	 * Creates a ClassNodeTransformer from a predicate.
+	 * Creates a transformer with priority 0.
 	 *
 	 * @param writeFlags ClassWriter flags for bytecode generation
-	 * @param transformer the transformation logic that returns whether transformation occurred
+	 * @param transformer the transformation logic, returning whether it changed the class
 	 * @return a new ClassNodeTransformer
 	 */
 	static ClassNodeTransformer create(int writeFlags, Predicate<ClassNode> transformer) {
@@ -72,11 +80,11 @@ public interface ClassNodeTransformer extends Comparable<ClassNodeTransformer> {
 	}
 
 	/**
-	 * Creates a ClassNodeTransformer with a specific priority.
+	 * Creates a transformer with the given priority.
 	 *
 	 * @param writeFlags ClassWriter flags for bytecode generation
-	 * @param priority the priority (lower values execute first)
-	 * @param transformer the transformation logic
+	 * @param priority the priority (lower values run first)
+	 * @param transformer the transformation logic, returning whether it changed the class
 	 * @return a new ClassNodeTransformer
 	 */
 	static ClassNodeTransformer create(int writeFlags, int priority, Predicate<ClassNode> transformer) {

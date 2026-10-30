@@ -45,17 +45,22 @@ import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
 /**
- * Main utility class providing helper methods for ASM bytecode manipulation.
- * Includes utilities for instruction finding, method lookup, instruction list manipulation,
- * debug output, and more.
+ * Static helpers for working with the ASM tree API: finding methods, local variables and instructions,
+ * building and splicing {@link InsnList}s, and printing classes/methods for debugging.
+ * <p>
+ * All {@code find*} methods throw a {@link NoSuchElementException} with a description of what was searched for
+ * instead of returning {@code null}.
  */
 public class ASMUtil {
 
-	/** Logger for ASM transformation operations */
+	/** Logger used for all output of this library. */
 	public static final Logger LOGGER = LogManager.getLogger("ASMUtil");
-	/** System property to disable transformation logging */
+	/** {@code -Dmeldexun.asm.disableLogging=true} disables the "Transforming class/method ..." log messages. */
 	public static final boolean DISABLE_LOGGING = Boolean.parseBoolean(System.getProperty("meldexun.asm.disableLogging"));
-	/** System property to enable exporting transformed classes to disk */
+	/**
+	 * {@code -Dmeldexun.asm.export=true} writes every class transformed by an {@link AbstractClassTransformer} to
+	 * {@code .meldexun/asm/export/} (the directory is cleared on the first export of each run).
+	 */
 	public static final boolean EXPORT = Boolean.parseBoolean(System.getProperty("meldexun.asm.export"));
 	private static final Path EXPORT_DIR = Paths.get(".meldexun/asm/export");
 	private static boolean exportDirCleaned;
@@ -113,10 +118,11 @@ public class ASMUtil {
 	}
 
 	/**
-	 * Converts a ClassNode to a human-readable string representation.
+	 * Converts a class to a human-readable listing for debugging: the class name followed by
+	 * {@link #methodToString(MethodNode)} of every method. Fields and attributes are not included.
 	 *
 	 * @param classNode the class to convert
-	 * @return string representation showing class name and all methods
+	 * @return a multi-line listing
 	 */
 	public static String classToString(ClassNode classNode) {
 		StringBuilder sb = new StringBuilder();
@@ -131,10 +137,13 @@ public class ASMUtil {
 	}
 
 	/**
-	 * Converts a MethodNode to a human-readable string representation.
+	 * Converts a method to a human-readable listing for debugging: name and descriptor followed by one line per
+	 * instruction (see {@link #instructionToString(AbstractInsnNode)}), prefixed with its index in the instruction
+	 * list. Typically used as {@code ASMUtil.LOGGER.info(ASMUtil.methodToString(methodNode))} while writing a
+	 * transformer.
 	 *
 	 * @param methodNode the method to convert
-	 * @return string representation showing method signature and all instructions
+	 * @return a multi-line listing
 	 */
 	public static String methodToString(MethodNode methodNode) {
 		StringBuilder sb = new StringBuilder();
@@ -159,10 +168,11 @@ public class ASMUtil {
 	}
 
 	/**
-	 * Converts an instruction to a human-readable string representation.
+	 * Converts an instruction to a single line consisting of the opcode name (empty for labels, line numbers and
+	 * frames), the instruction node type and its operands.
 	 *
 	 * @param insn the instruction to convert
-	 * @return string representation showing opcode, instruction type, and operands
+	 * @return a single line describing the instruction
 	 */
 	public static <T extends AbstractInsnNode> String instructionToString(T insn) {
 		StringBuilder sb = new StringBuilder();
@@ -216,92 +226,99 @@ public class ASMUtil {
 	}
 
 	/**
-	 * Finds a method by name in a class.
+	 * Finds the first method with the given name. If the method is overloaded, use an overload that also takes
+	 * the descriptor.
 	 *
 	 * @param classNode the class to search
 	 * @param name the method name
-	 * @return the matching method
-	 * @throws NoSuchElementException if method is not found
+	 * @return the first matching method
+	 * @throws NoSuchElementException if no method matches
 	 */
 	public static MethodNode find(ClassNode classNode, String name) {
 		return find(classNode, SignatureMatcher.matchingMethodName(name));
 	}
 
 	/**
-	 * Finds a method by name with obfuscation support.
+	 * Finds the first method whose name is equal to <b>either</b> {@code name} or {@code obfName}, so the same
+	 * transformer works against both the deobfuscated and the obfuscated version of a class (e.g. MCP and SRG names
+	 * in Minecraft). The environment is not detected, both names are always accepted.
 	 *
 	 * @param classNode the class to search
 	 * @param name the deobfuscated method name
-	 * @param obfName the obfuscated (SRG) method name
-	 * @return the matching method
-	 * @throws NoSuchElementException if method is not found
+	 * @param obfName the obfuscated method name
+	 * @return the first matching method
+	 * @throws NoSuchElementException if no method matches
 	 */
 	public static MethodNode findObf(ClassNode classNode, String name, String obfName) {
 		return find(classNode, SignatureMatcher.matchingMethodNameObf(name, obfName));
 	}
 
 	/**
-	 * Finds a method by name and descriptor.
+	 * Finds the method with the given name and descriptor.
 	 *
 	 * @param classNode the class to search
 	 * @param name the method name
-	 * @param desc the method descriptor
+	 * @param desc the method descriptor, e.g. {@code (Ljava/lang/String;)V}
 	 * @return the matching method
-	 * @throws NoSuchElementException if method is not found
+	 * @throws NoSuchElementException if no method matches
 	 */
 	public static MethodNode find(ClassNode classNode, String name, String desc) {
 		return find(classNode, SignatureMatcher.matchingMethodNameDesc(name, desc));
 	}
 
 	/**
-	 * Finds a method by name and descriptor with obfuscation support.
+	 * Finds the method whose name is equal to either {@code name} or {@code obfName} and whose descriptor is equal
+	 * to {@code desc}. Use this when only member names are obfuscated but class names are not (as is the case for
+	 * Forge coremod transformers, which run after Forge remapped class names).
 	 *
 	 * @param classNode the class to search
 	 * @param name the deobfuscated method name
-	 * @param obfName the obfuscated (SRG) method name
+	 * @param obfName the obfuscated method name
 	 * @param desc the method descriptor
 	 * @return the matching method
-	 * @throws NoSuchElementException if method is not found
+	 * @throws NoSuchElementException if no method matches
 	 */
 	public static MethodNode findObf(ClassNode classNode, String name, String obfName, String desc) {
 		return find(classNode, SignatureMatcher.matchingMethodNameDescObf(name, obfName, desc));
 	}
 
 	/**
-	 * Finds a method by name and descriptor with full obfuscation support.
+	 * Finds the method whose name is equal to either {@code name} or {@code obfName} and whose descriptor is equal
+	 * to either {@code desc} or {@code obfDesc}. Note the parameter order {@code (name, desc, obfName, obfDesc)},
+	 * which differs from {@link SignatureMatcher#matchingMethodNameDescObf(String, String, String, String)}.
 	 *
 	 * @param classNode the class to search
 	 * @param name the deobfuscated method name
 	 * @param desc the deobfuscated descriptor
-	 * @param obfName the obfuscated (SRG) method name
+	 * @param obfName the obfuscated method name
 	 * @param obfDesc the obfuscated descriptor
 	 * @return the matching method
-	 * @throws NoSuchElementException if method is not found
+	 * @throws NoSuchElementException if no method matches
 	 */
 	public static MethodNode findObf(ClassNode classNode, String name, String desc, String obfName, String obfDesc) {
 		return find(classNode, SignatureMatcher.matchingMethodNameDescObf(name, obfName, desc, obfDesc));
 	}
 
 	/**
-	 * Finds a method using a signature matcher.
+	 * Finds the first method accepted by the given matcher.
 	 *
 	 * @param classNode the class to search
-	 * @param signatureMatcher the matcher to find the method
-	 * @return the matching method
-	 * @throws NoSuchElementException if method is not found
+	 * @param signatureMatcher the matcher, also used to describe the method in the error message
+	 * @return the first matching method
+	 * @throws NoSuchElementException if no method matches
 	 */
 	public static MethodNode find(ClassNode classNode, SignatureMatcher<MethodNode> signatureMatcher) {
 		return find(classNode, signatureMatcher, signatureMatcher);
 	}
 
 	/**
-	 * Finds a method using a predicate with custom error details.
+	 * Finds the first method accepted by the given predicate.
 	 *
 	 * @param classNode the class to search
 	 * @param predicate the predicate to test methods
-	 * @param errorDetails consumer to append error details if not found
-	 * @return the matching method
-	 * @throws NoSuchElementException if method is not found
+	 * @param errorDetails appends a description of the searched method to the error message, may be {@code null}
+	 * @return the first matching method
+	 * @throws NoSuchElementException if no method matches
 	 */
 	public static MethodNode find(ClassNode classNode, Predicate<MethodNode> predicate,
 			Consumer<StringBuilder> errorDetails) {
@@ -320,88 +337,79 @@ public class ASMUtil {
 	}
 
 	/**
-	 * Creates an instruction finder starting from the first instruction.
+	 * Creates an {@link InsnFinder} searching forwards, starting at (and including) the first instruction.
 	 *
 	 * @param methodNode the method to search
-	 * @return an instruction finder
+	 * @return a new instruction finder
 	 */
 	public static InsnFinder<AbstractInsnNode> first(MethodNode methodNode) {
 		return InsnFinder.first(methodNode);
 	}
 
 	/**
-	 * Creates an instruction finder starting from the last instruction.
+	 * Creates an {@link InsnFinder} searching backwards, starting at (and including) the last instruction.
 	 *
 	 * @param methodNode the method to search
-	 * @return an instruction finder
+	 * @return a new instruction finder
 	 */
 	public static InsnFinder<AbstractInsnNode> last(MethodNode methodNode) {
 		return InsnFinder.last(methodNode);
 	}
 
 	/**
-	 * Creates an instruction finder for the next instruction after startExclusive.
+	 * Creates an {@link InsnFinder} searching forwards, starting at the instruction after {@code startExclusive}.
 	 *
 	 * @param methodNode the method to search
 	 * @param startExclusive the instruction to start after
-	 * @return an instruction finder
+	 * @return a new instruction finder
 	 */
 	public static InsnFinder<AbstractInsnNode> nextExclusive(MethodNode methodNode, AbstractInsnNode startExclusive) {
 		return InsnFinder.nextExclusive(methodNode, startExclusive);
 	}
 
 	/**
-	 * Creates an instruction finder for the previous instruction before startExclusive.
+	 * Creates an {@link InsnFinder} searching backwards, starting at the instruction before {@code startExclusive}.
 	 *
 	 * @param methodNode the method to search
 	 * @param startExclusive the instruction to start before
-	 * @return an instruction finder
+	 * @return a new instruction finder
 	 */
 	public static InsnFinder<AbstractInsnNode> prevExclusive(MethodNode methodNode, AbstractInsnNode startExclusive) {
 		return InsnFinder.prevExclusive(methodNode, startExclusive);
 	}
 
 	/**
-	 * Creates an instruction finder starting from startInclusive.
+	 * Creates an {@link InsnFinder} searching forwards, starting at (and including) {@code startInclusive}.
 	 *
 	 * @param methodNode the method to search
-	 * @param startInclusive the instruction to start from
-	 * @return an instruction finder
+	 * @param startInclusive the instruction to start at
+	 * @return a new instruction finder
 	 */
 	public static InsnFinder<AbstractInsnNode> next(MethodNode methodNode, AbstractInsnNode startInclusive) {
 		return InsnFinder.next(methodNode, startInclusive);
 	}
 
 	/**
-	 * Creates an instruction finder searching backwards from startInclusive.
+	 * Creates an {@link InsnFinder} searching backwards, starting at (and including) {@code startInclusive}.
 	 *
 	 * @param methodNode the method to search
-	 * @param startInclusive the instruction to start from
-	 * @return an instruction finder
+	 * @param startInclusive the instruction to start at
+	 * @return a new instruction finder
 	 */
 	public static InsnFinder<AbstractInsnNode> prev(MethodNode methodNode, AbstractInsnNode startInclusive) {
 		return InsnFinder.prev(methodNode, startInclusive);
 	}
 
-	/**
-	 * Creates an instruction list containing one instruction.
-	 *
-	 * @param insn0 the instruction to add
-	 * @return a new instruction list
+	/*
+	 * Fixed arity overloads of listOf(AbstractInsnNode...) that avoid allocating an array.
 	 */
+
 	public static InsnList listOf(AbstractInsnNode insn0) {
 		InsnList list = new InsnList();
 		list.add(insn0);
 		return list;
 	}
 
-	/**
-	 * Creates an instruction list containing two instructions.
-	 *
-	 * @param insn0 the first instruction
-	 * @param insn1 the second instruction
-	 * @return a new instruction list
-	 */
 	public static InsnList listOf(AbstractInsnNode insn0, AbstractInsnNode insn1) {
 		InsnList list = new InsnList();
 		list.add(insn0);
@@ -479,7 +487,8 @@ public class ASMUtil {
 	}
 
 	/**
-	 * Creates an instruction list from a variable number of instructions.
+	 * Creates a new instruction list containing the given instructions in order. An instruction can only be part
+	 * of one list, so the instructions must not already be in another list (e.g. the method's instructions).
 	 *
 	 * @param insns the instructions to add
 	 * @return a new instruction list
@@ -493,62 +502,75 @@ public class ASMUtil {
 	}
 
 	/**
-	 * Creates an instruction list using a single auto-generated label.
+	 * Creates a new {@link LabelNode} and passes it to {@code mappingFunction}. This allows building a list with
+	 * jumps inline, without declaring the label as a local variable first:
+	 *
+	 * <pre>
+	 * ASMUtil.listWithLabel(skip -&gt; ASMUtil.listOf(
+	 *         new VarInsnNode(Opcodes.ALOAD, 1),
+	 *         new JumpInsnNode(Opcodes.IFNULL, skip),
+	 *         ...,
+	 *         skip));
+	 * </pre>
+	 *
+	 * The label still has to be added to the returned list by {@code mappingFunction}.
 	 *
 	 * @param mappingFunction function that creates the instruction list using the label
-	 * @return a new instruction list
+	 * @return the list returned by {@code mappingFunction}
 	 */
 	public static InsnList listWithLabel(Function<LabelNode, InsnList> mappingFunction) {
 		return mappingFunction.apply(new LabelNode());
 	}
 
 	/**
-	 * Creates an instruction list using two auto-generated labels.
+	 * Like {@link #listWithLabel(Function)}, with two new labels.
 	 *
 	 * @param mappingFunction function that creates the instruction list using the labels
-	 * @return a new instruction list
+	 * @return the list returned by {@code mappingFunction}
 	 */
 	public static InsnList listWithLabels(BiFunction<LabelNode, LabelNode, InsnList> mappingFunction) {
 		return mappingFunction.apply(new LabelNode(), new LabelNode());
 	}
 
 	/**
-	 * Creates an instruction list using three auto-generated labels.
+	 * Like {@link #listWithLabel(Function)}, with three new labels.
 	 *
 	 * @param mappingFunction function that creates the instruction list using the labels
-	 * @return a new instruction list
+	 * @return the list returned by {@code mappingFunction}
 	 */
 	public static InsnList listWithLabels(TriFunction<LabelNode, LabelNode, LabelNode, InsnList> mappingFunction) {
 		return mappingFunction.apply(new LabelNode(), new LabelNode(), new LabelNode());
 	}
 
 	/**
-	 * Creates an instruction list using four auto-generated labels.
+	 * Like {@link #listWithLabel(Function)}, with four new labels.
 	 *
 	 * @param mappingFunction function that creates the instruction list using the labels
-	 * @return a new instruction list
+	 * @return the list returned by {@code mappingFunction}
 	 */
 	public static InsnList listWithLabels(QuadFunction<LabelNode, LabelNode, LabelNode, LabelNode, InsnList> mappingFunction) {
 		return mappingFunction.apply(new LabelNode(), new LabelNode(), new LabelNode(), new LabelNode());
 	}
 
 	/**
-	 * Removes all instructions from a method.
+	 * Removes all instructions from a method. Like {@link #replaceAll(MethodNode, InsnList)} this does not touch
+	 * {@link MethodNode#tryCatchBlocks} or {@link MethodNode#localVariables}, which may reference labels that were
+	 * removed.
 	 *
 	 * @param methodNode the method to modify
-	 * @return the removed instructions
+	 * @return a list containing the removed instructions, which can be inserted somewhere else
 	 */
 	public static InsnList removeAll(MethodNode methodNode) {
 		return remove(methodNode, methodNode.instructions.getFirst(), methodNode.instructions.getLast());
 	}
 
 	/**
-	 * Removes a range of instructions from a method.
+	 * Removes all instructions from {@code start} to {@code end} (both inclusive).
 	 *
 	 * @param methodNode the method to modify
 	 * @param start the first instruction to remove
-	 * @param end the last instruction to remove
-	 * @return the removed instructions
+	 * @param end the last instruction to remove, must be {@code start} or come after it
+	 * @return a list containing the removed instructions, which can be inserted somewhere else
 	 */
 	public static InsnList remove(MethodNode methodNode, AbstractInsnNode start, AbstractInsnNode end) {
 		InsnList list = new InsnList();
@@ -566,10 +588,11 @@ public class ASMUtil {
 	}
 
 	/**
-	 * Replaces all instructions in a method with a single instruction.
+	 * Replaces the whole method body with a single instruction.
 	 *
 	 * @param methodNode the method to modify
 	 * @param replacement the new instruction
+	 * @see #replaceAll(MethodNode, InsnList)
 	 */
 	public static void replaceAll(MethodNode methodNode, AbstractInsnNode replacement) {
 		methodNode.instructions.clear();
@@ -577,7 +600,9 @@ public class ASMUtil {
 	}
 
 	/**
-	 * Replaces all instructions in a method with an instruction list.
+	 * Replaces the whole method body. Only the instructions are replaced: if the method had try-catch blocks or a
+	 * local variable table, clear {@link MethodNode#tryCatchBlocks} and {@link MethodNode#localVariables} as well,
+	 * since they reference labels that are no longer part of the method.
 	 *
 	 * @param methodNode the method to modify
 	 * @param replacement the new instructions
@@ -588,11 +613,11 @@ public class ASMUtil {
 	}
 
 	/**
-	 * Replaces a single instruction with another instruction.
+	 * Replaces a single instruction.
 	 *
 	 * @param methodNode the method to modify
-	 * @param target the instruction to replace
-	 * @param replacement the new instruction
+	 * @param target the instruction to remove
+	 * @param replacement the instruction inserted where {@code target} was
 	 */
 	public static void replace(MethodNode methodNode, AbstractInsnNode target, AbstractInsnNode replacement) {
 		AbstractInsnNode previous = target.getPrevious();
@@ -605,11 +630,11 @@ public class ASMUtil {
 	}
 
 	/**
-	 * Replaces a single instruction with an instruction list.
+	 * Replaces a single instruction with a list of instructions.
 	 *
 	 * @param methodNode the method to modify
-	 * @param target the instruction to replace
-	 * @param replacement the new instructions
+	 * @param target the instruction to remove
+	 * @param replacement the instructions inserted where {@code target} was
 	 */
 	public static void replace(MethodNode methodNode, AbstractInsnNode target, InsnList replacement) {
 		AbstractInsnNode previous = target.getPrevious();
@@ -622,12 +647,12 @@ public class ASMUtil {
 	}
 
 	/**
-	 * Replaces a range of instructions with a single instruction.
+	 * Replaces all instructions from {@code start} to {@code end} (both inclusive) with a single instruction.
 	 *
 	 * @param methodNode the method to modify
-	 * @param start the first instruction to replace
-	 * @param end the last instruction to replace
-	 * @param replacement the new instruction
+	 * @param start the first instruction to remove
+	 * @param end the last instruction to remove, must be {@code start} or come after it
+	 * @param replacement the instruction inserted where the range was
 	 */
 	public static void replace(MethodNode methodNode, AbstractInsnNode start, AbstractInsnNode end,
 			AbstractInsnNode replacement) {
@@ -641,12 +666,12 @@ public class ASMUtil {
 	}
 
 	/**
-	 * Replaces a range of instructions with an instruction list.
+	 * Replaces all instructions from {@code start} to {@code end} (both inclusive) with a list of instructions.
 	 *
 	 * @param methodNode the method to modify
-	 * @param start the first instruction to replace
-	 * @param end the last instruction to replace
-	 * @param replacement the new instructions
+	 * @param start the first instruction to remove
+	 * @param end the last instruction to remove, must be {@code start} or come after it
+	 * @param replacement the instructions inserted where the range was
 	 */
 	public static void replace(MethodNode methodNode, AbstractInsnNode start, AbstractInsnNode end,
 			InsnList replacement) {
@@ -672,77 +697,88 @@ public class ASMUtil {
 	}
 
 	/**
-	 * Finds a local variable by name.
+	 * Finds the first local variable with the given name.
+	 * <p>
+	 * All {@code findLocalVariable*} methods search {@link MethodNode#localVariables}, i.e. the
+	 * {@code LocalVariableTable} debug attribute. Classes compiled without debug information (or with stripped
+	 * debug information) have no entries, in which case the variable index has to be hardcoded instead. Entries
+	 * are searched in table order, which is not necessarily declaration order, and a variable that is declared in
+	 * several scopes (e.g. two loops each declaring {@code i}) has one entry per scope.
 	 *
 	 * @param methodNode the method to search
 	 * @param name the variable name
-	 * @return the matching local variable
-	 * @throws NoSuchElementException if variable is not found
+	 * @return the matching local variable, use {@link LocalVariableNode#index} for load/store instructions
+	 * @throws NoSuchElementException if no variable matches
 	 */
 	public static LocalVariableNode findLocalVariable(MethodNode methodNode, String name) {
 		return findLocalVariable(methodNode, name, 0);
 	}
 
 	/**
-	 * Finds a local variable by name and ordinal.
+	 * Finds the {@code ordinal}-th local variable with the given name.
 	 *
 	 * @param methodNode the method to search
 	 * @param name the variable name
-	 * @param ordinal the occurrence index (0 for first match)
+	 * @param ordinal the number of matching variables to skip (0 for the first match)
 	 * @return the matching local variable
-	 * @throws NoSuchElementException if variable is not found
+	 * @throws NoSuchElementException if no variable matches
+	 * @see #findLocalVariable(MethodNode, String)
 	 */
 	public static LocalVariableNode findLocalVariable(MethodNode methodNode, String name, int ordinal) {
 		return findLocalVariable(methodNode, name, null, ordinal);
 	}
 
 	/**
-	 * Finds a local variable by descriptor.
+	 * Finds the first local variable with the given type.
 	 *
 	 * @param methodNode the method to search
-	 * @param desc the variable descriptor
+	 * @param desc the variable type descriptor, e.g. {@code Lnet/minecraft/world/World;} or {@code I}
 	 * @return the matching local variable
-	 * @throws NoSuchElementException if variable is not found
+	 * @throws NoSuchElementException if no variable matches
+	 * @see #findLocalVariable(MethodNode, String)
 	 */
 	public static LocalVariableNode findLocalVariableDesc(MethodNode methodNode, String desc) {
 		return findLocalVariableDesc(methodNode, desc, 0);
 	}
 
 	/**
-	 * Finds a local variable by descriptor and ordinal.
+	 * Finds the {@code ordinal}-th local variable with the given type.
 	 *
 	 * @param methodNode the method to search
-	 * @param desc the variable descriptor
-	 * @param ordinal the occurrence index (0 for first match)
+	 * @param desc the variable type descriptor
+	 * @param ordinal the number of matching variables to skip (0 for the first match)
 	 * @return the matching local variable
-	 * @throws NoSuchElementException if variable is not found
+	 * @throws NoSuchElementException if no variable matches
+	 * @see #findLocalVariable(MethodNode, String)
 	 */
 	public static LocalVariableNode findLocalVariableDesc(MethodNode methodNode, String desc, int ordinal) {
 		return findLocalVariable(methodNode, null, desc, ordinal);
 	}
 
 	/**
-	 * Finds a local variable by name and descriptor.
+	 * Finds the first local variable with the given name and type.
 	 *
 	 * @param methodNode the method to search
 	 * @param name the variable name
-	 * @param desc the variable descriptor
+	 * @param desc the variable type descriptor
 	 * @return the matching local variable
-	 * @throws NoSuchElementException if variable is not found
+	 * @throws NoSuchElementException if no variable matches
+	 * @see #findLocalVariable(MethodNode, String)
 	 */
 	public static LocalVariableNode findLocalVariable(MethodNode methodNode, String name, String desc) {
 		return findLocalVariable(methodNode, name, desc, 0);
 	}
 
 	/**
-	 * Finds a local variable by name, descriptor, and ordinal.
+	 * Finds the {@code ordinal}-th local variable with the given name and type.
 	 *
 	 * @param methodNode the method to search
-	 * @param name the variable name (null to match any)
-	 * @param desc the variable descriptor (null to match any)
-	 * @param ordinal the occurrence index (0 for first match)
+	 * @param name the variable name, or {@code null} to match any name
+	 * @param desc the variable type descriptor, or {@code null} to match any type
+	 * @param ordinal the number of matching variables to skip (0 for the first match)
 	 * @return the matching local variable
-	 * @throws NoSuchElementException if variable is not found
+	 * @throws NoSuchElementException if no variable matches
+	 * @see #findLocalVariable(MethodNode, String)
 	 */
 	public static LocalVariableNode findLocalVariable(MethodNode methodNode, String name, String desc, int ordinal) {
 		int i = 0;
@@ -757,13 +793,25 @@ public class ASMUtil {
 	}
 
 	/**
-	 * Adds a new local variable to a method with an auto-assigned index.
+	 * Adds an entry to the local variable table, using the index after the highest index currently in the table.
+	 * Afterwards the index can be looked up with {@link #findLocalVariable(MethodNode, String)}.
+	 * <p>
+	 * Things to be aware of:
+	 * <ul>
+	 * <li>{@code start} and {@code end} are only referenced, they still have to be inserted into the method's
+	 * instructions (with {@code start} before {@code end}), otherwise writing the class fails.</li>
+	 * <li>The index is derived from the local variable table only. If the table is empty or incomplete (no debug
+	 * information) or the last variable is a {@code long}/{@code double} (which occupy two slots), the chosen index
+	 * may collide with an existing variable.</li>
+	 * <li>{@link MethodNode#maxLocals} is not updated, use {@link org.objectweb.asm.ClassWriter#COMPUTE_MAXS} or
+	 * {@link org.objectweb.asm.ClassWriter#COMPUTE_FRAMES}.</li>
+	 * </ul>
 	 *
 	 * @param methodNode the method to modify
 	 * @param name the variable name
-	 * @param desc the variable descriptor
-	 * @param start the start label for variable scope
-	 * @param end the end label for variable scope
+	 * @param desc the variable type descriptor
+	 * @param start the label at which the variable's scope starts
+	 * @param end the label at which the variable's scope ends
 	 */
 	public static void addLocalVariable(MethodNode methodNode, String name, String desc, LabelNode start, LabelNode end) {
 		int i = 0;
@@ -776,9 +824,9 @@ public class ASMUtil {
 	}
 
 	/**
-	 * Creates a stream of all methods in a class.
+	 * Returns a stream of all methods of a class.
 	 *
-	 * @param classNode the class to stream
+	 * @param classNode the class
 	 * @return a stream of methods
 	 */
 	public static Stream<MethodNode> stream(ClassNode classNode) {
@@ -786,27 +834,37 @@ public class ASMUtil {
 	}
 
 	/**
-	 * Creates a stream of all instructions in a method.
+	 * Returns a stream of all instructions of a method.
 	 *
-	 * @param methodNode the method to stream
+	 * @param methodNode the method
 	 * @return a stream of instructions
+	 * @see #stream(InsnList)
 	 */
 	public static Stream<AbstractInsnNode> stream(MethodNode methodNode) {
 		return stream(methodNode.instructions);
 	}
 
 	/**
-	 * Creates a stream of all instructions in an instruction list.
+	 * Returns a stream of all instructions in an instruction list. Adding or removing instructions while the
+	 * stream is being consumed causes a {@link java.util.ConcurrentModificationException}; collect the instructions
+	 * into a list first (or use {@link #forEach(InsnList, BiConsumer)}). Modifying the instructions themselves (e.g.
+	 * changing the owner of a {@link MethodInsnNode}) is fine.
 	 *
-	 * @param instructions the instruction list to stream
+	 * @param instructions the instruction list
 	 * @return a stream of instructions
 	 */
 	public static Stream<AbstractInsnNode> stream(InsnList instructions) {
 		return StreamSupport.stream(new InsnSpliterator(instructions), false);
 	}
 
+	/*
+	 * The forEach overloads iterate over an instruction list, optionally only visiting instructions of a given type
+	 * and/or accepted by a filter. The variants taking a BiConsumer additionally pass the list iterator, which can
+	 * be used to remove, replace (set) or add instructions at the current position while iterating.
+	 */
+
 	/**
-	 * Iterates over all instructions in an instruction list.
+	 * Calls {@code action} for every instruction.
 	 *
 	 * @param instructions the instruction list to iterate
 	 * @param action the action to perform on each instruction
@@ -816,10 +874,10 @@ public class ASMUtil {
 	}
 
 	/**
-	 * Iterates over all instructions of a specific type.
+	 * Calls {@code action} for every instruction of the given type.
 	 *
 	 * @param instructions the instruction list to iterate
-	 * @param type the instruction type to match
+	 * @param type the instruction node class, e.g. {@code MethodInsnNode.class}
 	 * @param action the action to perform on each matching instruction
 	 */
 	public static <T extends AbstractInsnNode> void forEach(InsnList instructions, Class<T> type, Consumer<T> action) {
@@ -827,7 +885,7 @@ public class ASMUtil {
 	}
 
 	/**
-	 * Iterates over filtered instructions.
+	 * Calls {@code action} for every instruction accepted by {@code filter}.
 	 *
 	 * @param instructions the instruction list to iterate
 	 * @param filter the filter predicate
@@ -839,11 +897,11 @@ public class ASMUtil {
 	}
 
 	/**
-	 * Iterates over filtered instructions of a specific type.
+	 * Calls {@code action} for every instruction of the given type that is accepted by {@code filter}.
 	 *
 	 * @param instructions the instruction list to iterate
-	 * @param type the instruction type to match (null for any type)
-	 * @param filter the filter predicate (null for no filtering)
+	 * @param type the instruction node class, or {@code null} for any type
+	 * @param filter the filter predicate, or {@code null} to accept all instructions
 	 * @param action the action to perform on each matching instruction
 	 */
 	public static <T extends AbstractInsnNode> void forEach(InsnList instructions, Class<T> type, Predicate<T> filter,
@@ -852,10 +910,10 @@ public class ASMUtil {
 	}
 
 	/**
-	 * Iterates over all instructions with access to the iterator for removal/insertion.
+	 * Calls {@code action} for every instruction, passing the iterator positioned after the instruction.
 	 *
 	 * @param instructions the instruction list to iterate
-	 * @param action the action receiving both iterator and instruction
+	 * @param action the action receiving the iterator and the current instruction
 	 */
 	public static void forEach(InsnList instructions,
 			BiConsumer<ListIterator<AbstractInsnNode>, AbstractInsnNode> action) {
@@ -863,11 +921,12 @@ public class ASMUtil {
 	}
 
 	/**
-	 * Iterates over instructions of a specific type with access to the iterator.
+	 * Calls {@code action} for every instruction of the given type, passing the iterator positioned after the
+	 * instruction.
 	 *
 	 * @param instructions the instruction list to iterate
-	 * @param type the instruction type to match
-	 * @param action the action receiving both iterator and instruction
+	 * @param type the instruction node class
+	 * @param action the action receiving the iterator and the current instruction
 	 */
 	public static <T extends AbstractInsnNode> void forEach(InsnList instructions, Class<T> type,
 			BiConsumer<ListIterator<AbstractInsnNode>, T> action) {
@@ -875,11 +934,12 @@ public class ASMUtil {
 	}
 
 	/**
-	 * Iterates over filtered instructions with access to the iterator.
+	 * Calls {@code action} for every instruction accepted by {@code filter}, passing the iterator positioned after
+	 * the instruction.
 	 *
 	 * @param instructions the instruction list to iterate
 	 * @param filter the filter predicate
-	 * @param action the action receiving both iterator and instruction
+	 * @param action the action receiving the iterator and the current instruction
 	 */
 	public static void forEach(InsnList instructions, Predicate<AbstractInsnNode> filter,
 			BiConsumer<ListIterator<AbstractInsnNode>, AbstractInsnNode> action) {
@@ -887,12 +947,13 @@ public class ASMUtil {
 	}
 
 	/**
-	 * Iterates over filtered instructions of a specific type with access to the iterator.
+	 * Calls {@code action} for every instruction of the given type that is accepted by {@code filter}, passing the
+	 * iterator positioned after the instruction.
 	 *
 	 * @param instructions the instruction list to iterate
-	 * @param type the instruction type to match (null for any type)
-	 * @param filter the filter predicate (null for no filtering)
-	 * @param action the action receiving both iterator and instruction
+	 * @param type the instruction node class, or {@code null} for any type
+	 * @param filter the filter predicate, or {@code null} to accept all instructions
+	 * @param action the action receiving the iterator and the current instruction
 	 */
 	@SuppressWarnings("unchecked")
 	public static <T extends AbstractInsnNode> void forEach(InsnList instructions, Class<T> type, Predicate<T> filter,
